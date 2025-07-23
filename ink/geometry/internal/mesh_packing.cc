@@ -904,7 +904,8 @@ absl::StatusOr<CodingParamsArray> ComputeCodingParamsArray(
     const MeshFormat& format, const AttributeBoundsArray& bounds,
     absl::Span<const std::optional<MeshAttributeCodingParams>>
         custom_coding_params_array) {
-  size_t n_attrs = format.Attributes().size();
+  absl::Span<const MeshFormat::Attribute> attributes = format.Attributes();
+  size_t n_attrs = attributes.size();
   if (bounds.Size() != n_attrs) {
     return absl::InvalidArgumentError(
         absl::Substitute("Size mismatch: `format` has $0 attributes, but "
@@ -920,29 +921,33 @@ absl::StatusOr<CodingParamsArray> ComputeCodingParamsArray(
     }
     for (size_t i = 0; i < n_attrs; ++i) {
       if (!custom_coding_params_array[i].has_value()) continue;
-
-      MeshFormat::AttributeType type = format.Attributes()[i].type;
+      const MeshFormat::Attribute attribute = attributes[i];
+      MeshFormat::AttributeType type = attribute.type;
       if (MeshFormat::IsUnpackedType(type)) {
-        return absl::InvalidArgumentError(
-            absl::Substitute("Coding params specified for attribute at index "
-                             "$0, but the attribute is unpacked",
-                             i));
+        return absl::InvalidArgumentError(absl::Substitute(
+            "Coding params were provided for attribute at index $0 with id $1 "
+            "and type $2, but the attribute type is unpacked",
+            i, attribute.id, attribute.type));
       }
 
       const MeshAttributeCodingParams& params = *custom_coding_params_array[i];
       if (!IsValidCodingParams(type, params)) {
         return absl::InvalidArgumentError(absl::Substitute(
-            "Coding params at index $0 is not valid for format", i));
+            "Coding params were provided for attribute at index $0 with id $1 "
+            "and type $2, but were not valid for that type; params = $3",
+            i, attribute.id, attribute.type, params));
       }
 
       if (!UnpackedFloatValuesAreRepresentable(type, params,
                                                bounds[i].minimum) ||
           !UnpackedFloatValuesAreRepresentable(type, params,
                                                bounds[i].maximum)) {
-        return absl::InvalidArgumentError(
-            absl::Substitute("Coding params at index $0 cannot represent all "
-                             "values of its attribute",
-                             i));
+        return absl::InvalidArgumentError(absl::Substitute(
+            "Coding params were provided for attribute at index $0 with id $1 "
+            "and type $2, but cannot represent all values of that attribute; "
+            "params = $3, minimum = $4, maximum = $5",
+            i, attribute.id, attribute.type, params, bounds[i].minimum,
+            bounds[i].maximum));
       }
     }
   }
